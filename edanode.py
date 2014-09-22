@@ -5,7 +5,7 @@ import time
 from midas.node import BaseNode
 from midas import pylsl_python3 as lsl
 from midas import utilities as mu
-
+import numpy as np
 
 class EDANode(BaseNode):
 
@@ -13,21 +13,23 @@ class EDANode(BaseNode):
         super().__init__(*args)
 
         self.metric_functions = []
-        self.metric_functions.append(self.infoload)
+        self.metric_functions.append(self.normalize_scl)
         self.generate_metric_lists()
 
-        self.process_list.append(self.process_eda)
+        self.process_list.append(self.compute_scl)
 
-    def infoload(self,x):
-        """ This is a place-holder. """
-        print("ping")
-        return 256
+    def normalize_scl(self,x):
+        """ Returns the current SCL value normalized between 0 and 1. """
+        max_val = np.max(x['data'][0])
+        last_val = x['data'][0][-1]
+        return last_val/max_val
 
-    def process_eda(self):
-        """ Update secondary data buffer with processed EDA values. """
+    def compute_scl(self):
+        """ Update secondary (SCL) data buffer with processed GSR values. """
         
         # We can initialize run-once stuff here
-        interval = 5.0;
+        interval = 5.0      # time between samples
+        c = 0               # channel index
 
         # ----------- Process loop for acquiring secondary data ---------------
         i = 0
@@ -37,20 +39,23 @@ class EDANode(BaseNode):
             data,times = self.data_snapshot([90, 90])
 
             # 2. Calculate the desired metric and grab the current time-stamp
-            val = len(data[0])
+            if len(data[0])>0:
+                val = np.mean(data[0])
+            else:
+                val = 0
             tme = lsl.local_clock()
 
             # 3. Update secondary buffer            
             self.lock_secondary.acquire()
-            self.channel_data_secondary[0][self.writepointer_secondary[0]] = val
-            self.time_array_secondary[0][self.writepointer_secondary[0]] = tme
+            self.channel_data_secondary[c][self.writepointer_secondary[c]] = val
+            self.time_array_secondary[c][self.writepointer_secondary[c]] = tme
             i+= 1
-            self.writepointer_secondary[0] = i % self.buffer_size_secondary
+            self.writepointer_secondary[c] = i % self.buffer_size_secondary
             self.lock_secondary.release()
             
-            if ((0 == self.buffer_full_secondary[0]) and 
+            if ((0 == self.buffer_full_secondary[c]) and 
                                         (i >= self.buffer_size_secondary)):
-                self.buffer_full_secondary[0] = 1
+                self.buffer_full_secondary[c] = 1
 
             # 4. Sleep until its time to calculate another value 
             time.sleep(interval)
