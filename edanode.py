@@ -8,14 +8,13 @@ from midas import utilities as mu
 import numpy as np
 
 class EDANode(BaseNode):
+    """ Node for analyzing EDA-data. """
 
     def __init__(self,*args):
+        """ Initialize EDA-node. """
         super().__init__(*args)
 
-        self.metric_functions = []
         self.metric_functions.append(self.normalize_scl)
-        self.generate_metric_lists()
-
         self.process_list.append(self.compute_scl)
 
     def normalize_scl(self,x):
@@ -28,11 +27,10 @@ class EDANode(BaseNode):
         """ Update secondary (SCL) data buffer with processed GSR values. """
         
         # We can initialize run-once stuff here
-        interval = 5.0      # time between samples
-        c = 0               # channel index
+        interval = 5.0          # time between samples
+        ch = 0                  # channel index
 
         # ----------- Process loop for acquiring secondary data ---------------
-        i = 0
         while self.run_state.value:
 
             # 1. Snapshot current data buffer (last 90 seconds)
@@ -40,22 +38,13 @@ class EDANode(BaseNode):
 
             # 2. Calculate the desired metric and grab the current time-stamp
             if len(data[0])>0:
-                val = np.mean(data[0])
+                new_value = np.mean(data[0])
             else:
-                val = 0
-            tme = lsl.local_clock()
+                new_value = 0
+            time_stamp = lsl.local_clock()
 
-            # 3. Update secondary buffer            
-            self.lock_secondary.acquire()
-            self.channel_data_secondary[c][self.writepointer_secondary[c]] = val
-            self.time_array_secondary[c][self.writepointer_secondary[c]] = tme
-            i+= 1
-            self.writepointer_secondary[c] = i % self.buffer_size_secondary
-            self.lock_secondary.release()
-            
-            if ((0 == self.buffer_full_secondary[c]) and 
-                                        (i >= self.buffer_size_secondary)):
-                self.buffer_full_secondary[c] = 1
+            # 3. Update secondary buffer          
+            self.push_sample_secondary(ch,time_stamp,new_value) 
 
             # 4. Sleep until its time to calculate another value 
             time.sleep(interval)
